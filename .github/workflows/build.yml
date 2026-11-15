@@ -4,6 +4,13 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     # Ubuntu 24.04 runners come with the Android SDK already installed.
@@ -25,9 +32,23 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/*.apk Swara.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Swara-apk
-          path: app/build/outputs/apk/release/*.apk
+          path: Swara.apk
+
+      # Publishes the APK at a fixed link:
+      # https://github.com/<owner>/<repo>/releases/latest/download/Swara.apk
+      - name: Publish release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest Swara.apk \
+            --title "Swara (latest build)" \
+            --notes "Built from ${GITHUB_SHA::7}. Download Swara.apk below and open it on your phone to install." \
+            --latest
